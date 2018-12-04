@@ -8,7 +8,6 @@
 
 
 import numpy as np
-import pandas as pd
 from astropy.io import fits
 import h5py
 
@@ -124,20 +123,6 @@ else:
     bkg_eff_cts_err = qpb['SPECTRUM'].data['STAT_ERR']
 
 
-# Load the array of D-factors and positions, data in Chris' directory
-# columns truncate the 0 at the start of many obsIDs, so fix this
-chris_dir = '/nfs/turbo/bsafdi/dessert/xmm-decay/data/'
-obs_df = pd.read_csv(chris_dir + 'all_obs_9_5_2018_dfacs.csv',
-                     index_col='OBSERVATION.OBSERVATION_ID')
-int2str_dict = np.load(chris_dir + 'int2str_dict.npy').item()
-obs_df.rename(int2str_dict,axis='index',inplace=True)
-
-Dfac = obs_df['Dfac_gal'].loc[obsID] # [keV/cm^2]
-EGDfac = obs_df['Dfac_eg'].loc[obsID] # [keV/cm^2]
-gal_l = obs_df['OBSERVATION.LII'].loc[obsID] # [deg]
-gal_b = obs_df['OBSERVATION.BII'].loc[obsID] # [deg]
-
-
 # Write the output as an h5 file, compressing the detector response
 out_file = xmmdata + '/' + obsID + '/' + prefix + '_processed.h5'
 h5f = h5py.File(out_file, 'w')
@@ -152,8 +137,4 @@ h5f.create_dataset('cout_min',data=cout_min)
 h5f.create_dataset('cout_max',data=cout_max)
 h5f.create_dataset('bkg_eff_cts',data=bkg_eff_cts)
 h5f.create_dataset('bkg_eff_cts_err',data=bkg_eff_cts_err)
-h5f.create_dataset('Dfac',data=Dfac)
-h5f.create_dataset('EGDfac',data=EGDfac)
-h5f.create_dataset('gal_l',data=gal_l)
-h5f.create_dataset('gal_b',data=gal_b)
 h5f.close()

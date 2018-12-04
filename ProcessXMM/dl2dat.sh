@@ -7,25 +7,17 @@
 # Script to download a given XMM observation and convert this to a data file 
 #
 # To call this script for an observation with ID=obsID, use: ./dl2dat.sh $obsID
-#
-# Information about this procedure can be found here:
-# - https://heasarc.gsfc.nasa.gov/docs/xmm/esas/cookbook/xmm-esas.html
-# - https://xmm-tools.cosmos.esa.int/external/xmm_user_support/documentation/sas_usg/USG/
-# - https://heasarc.gsfc.nasa.gov/docs/xmm/sas/help/
-#
-# NB: File paths are hard coded for flux
-#
-# Useful XMM trivia: 
-# - energy res ~2-5%, range 0.1 to 15 keV
-# - angular res ~ 6 arcsec (0.002 deg), FoV ~30 arcmin (0.5 deg) 
+# Before calling, all directories must be set in set_dirs.sh
 #
 ###############################################################################
 
-# Save initial directory, as python file to process data is here too
-cwd=$(pwd)
+# TODO: I think a number of the special cases can now be removed, should review
+# TODO: Add check for if clean.fits is missing don't process - this only occurred for
+# two of the unscheduled 0165570101 mos exposures
 
-# Establish the directory where the data will be downloaded and stored
-xmmdata=/nfs/turbo/bsafdi/xmm-data
+
+# Import directories which must be set before running
+source set_dirs.sh
 
 
 # The data processing involves the following steps:
@@ -60,23 +52,21 @@ echo 'Starting the data processing'
 echo -e '\nStep 1: initializing the required software'
 
 # Initialize the HEADAS software
-HEADAS=/nfs/turbo/bsafdi/bsafdi/code/HEADAS/heasoft-6.24/x86_64-pc-linux-gnu-libc2.17
 . $HEADAS/headas-init.sh
 
 # Initialize the XMM-SAS software and XMM-ESAS sub-package
-XMMSAS=/nfs/turbo/bsafdi/dessert/code/XMM_SASv17/xmmsas_20180620_1732
 . $XMMSAS/setsas.sh > /dev/null # suppress launch notifications
 
 # Define CalDB directory, contains additional files that are required for the 
 # processing of both spectra and images
-export CALDB=/nfs/turbo/bsafdi/dessert/xmm-decay/esas_caldb
+export CALDB=$CALDBPATH
 
 # Source two directories that don't yet exist, but are used for data processing
 export SAS_CCF=$xmmdata/$obsID/analysis/ccf.cif
 export SAS_ODF=$xmmdata/$obsID/odf
 
-# Source the CCFs (valid as of 10/4/2018)
-export SAS_CCFPATH=/nfs/turbo/bsafdi/dessert/code/XMM_SASv17/ccf
+# Source the CCFs
+export SAS_CCFPATH=$CCFPATH
 
 # NB: the above variables are used internally by various tools below, not just
 # explicitly in the bash script, so it is important to export them
@@ -108,6 +98,7 @@ curl -s -o files$obsID.tar "http://nxsa.esac.esa.int/nxsa-sl/servlet/data-action
 read -r firstline < files$obsID.tar
 prot_err="Data protected by proprietary rights. Please check your credentials"
 if [ "$firstline" = "$prot_err" ]; then
+    rm -f files$obsID.tar
     echo $prot_err
     echo 'Processing failed!' 
     exit 1
@@ -139,8 +130,6 @@ else
     echo 'Continuing log for ID '$obsID > $obsID/summary.txt
 fi
 
-chmod -R 777 $obsID
-
 # Unpack compressed files within the directories 
 # First in the observation data file directory
 cd $obsID/odf 
@@ -165,7 +154,27 @@ tar -xvf *.TAR > ../untar_output.txt 2>&1
 cd ../pps
 rename .FTZ .FIT.gz *.FTZ > ../untar_output.txt 2>&1
 gunzip -f *.FIT.gz > ../untar_output.txt 2>&1
+
+# Copy the PPS summary file and the PPS MSG file to the obsID directory
+cp *PPSMSG*.ASC ../pps_run_message.ASC
+cp *PPSSUM*.HTM ../pps_summary.HTM
 cd ..
+
+# Check that the observation data was taken during or after revolution 42.
+# Before this time the CCDs were behaving differently
+# and special calibration files must be used.
+# Find revolution information in the PPS MSG file
+revolution_line=$(grep 'Revolution' pps_run_message.ASC)
+revolution=${revolution_line:11}
+if [ $revolution -lt 42 ]; then 
+    rm -rf odf/
+    rm -rf pps/
+    echo 'The observation data was taken before revolution 42. It cannot be processed.' >> summary.txt
+    echo 'Processing failed!' >> summary.txt
+    echo 'The observation data was taken before revolution 42. It cannot be processed.'
+    echo 'Processing failed!'
+    exit 1
+fi
 
 
 #########################
@@ -225,15 +234,24 @@ else
     if ls ../*_exposures.txt 1> /dev/null 2>&1; then
         echo 'Successfully created science exposures' >> ../summary.txt
     else
-        echo 'Failed to create science exposures' >> ../summary.txt
-        echo 'Processing failed!' >> ../summary.txt
+        cd ..
+        rm -rf odf/
+        rm -rf pps/
+        rm -rf analysis/ 
+        echo 'There are no science exposures for this observation.' >> ./summary.txt
+        echo 'Processing failed!' >> ./summary.txt
+        echo 'There are no science exposures for this observation.'
         echo 'Processing failed!'
         exit 1
     fi
 fi
 
 # Get array of the mos prefixes
-mosprefixes=$(<../mos_exposures.txt)
+if [ ! -f ../mos_exposures.txt ]; then
+    mosprefixes=''
+else
+    mosprefixes=$(<../mos_exposures.txt)
+fi
 # Get array of the pn prefixes and count number of exposures
 if [ ! -f ../pn_exposures.txt ]; then
     pnprefixes=''
@@ -272,20 +290,25 @@ if [ $obsID == 0690580101 ]; then
     echo 'epchain exposure=2 > ../epchain_output.txt 2>&1' >> ../summary.txt
     epchain exposure=2 > ../epchain_output.txt 2>&1
 else
-    for ie in `seq 1 ${n_pnexp}`; do
-        if [ $ie == 1 ]; then
-            # Run epchain for the first exposure
-            echo 'epchain withoutoftime=true > ../epchain1oot_output.txt 2>&1' >> ../summary.txt
-            epchain withoutoftime=true > ../epchain1oot_output.txt 2>&1
-            echo 'epchain > ../epchain1_output.txt 2>&1' >> ../summary.txt
-            epchain > ../epchain1_output.txt 2>&1
-        else
-            # Run for the rest of the exposures
-            # Explicity call out exposure number
-            echo 'epchain withoutoftime=true exposure='$ie' > ../epchain'$ie'oot_output.txt 2>&1' >> ../summary.txt
-            epchain withoutoftime=true exposure=$ie > ../epchain${ie}oot_output.txt 2>&1
-            echo 'epchain exposure='$ie' > ../epchain'$ie'_output.txt 2>&1' >> ../summary.txt
-            epchain exposure=$ie > ../epchain${ie}_output.txt 2>&1
+    for pref in $pnprefixes; do
+        schedule=${pref:0:1}
+        exposure=${pref:1:3}
+        echo 'epchain withoutoftime=true odfaccess=odf exposure='$exposure' schedule='$schedule' > ../epchain'$pref'oot_output.txt 2>&1' >> ../summary.txt
+        epchain withoutoftime=true odfaccess=odf exposure=$exposure schedule=$schedule > ../epchain${pref}oot_output.txt 2>&1
+        echo 'epchain odfaccess=odf exposure='$exposure' schedule='$schedule' > ../epchain'$pref'_output.txt 2>&1' >> ../summary.txt
+        epchain odfaccess=odf exposure=$exposure schedule=$schedule > ../epchain${pref}_output.txt 2>&1
+        
+        # Check that epchain completed successfully
+        # There are sometimes errors where the TCX file is nearly empty and the epchain cannot complete
+        # If so the file should be rerun using the TCS timing information
+        if ( grep -q "TooFewTimeCorrelationDataPoints" ../epchain${pref}oot_output.txt ) || ( grep -q "TooFewTimeCorrelationDataPoints" ../epchain${pref}_output.txt ); then
+            echo 'TCX file is almost empty. Rerunning with the TCS file.'
+            echo 'TCX file is almost empty. Rerunning with the TCS file.' >> ../summary.txt
+            export SAS_TIMECORR=TCS
+            echo 'epchain withoutoftime=true odfaccess=odf exposure='$exposure' schedule='$schedule' > ../epchain'$pref'oot_output.txt 2>&1' >> ../summary.txt
+            epchain withoutoftime=true odfaccess=odf exposure=$exposure schedule=$schedule > ../epchain${pref}oot_output.txt 2>&1
+            echo 'epchain odfaccess=odf exposure='$exposure' schedule='$schedule' > ../epchain'$pref'_output.txt 2>&1' >> ../summary.txt
+            epchain odfaccess=odf exposure=$exposure schedule=$schedule > ../epchain${pref}_output.txt 2>&1
         fi
     done
 fi
@@ -318,6 +341,19 @@ echo '...for the MOS camera' >> ../summary.txt
 # In each case the output is essentially the same as for the PN camera, and stored in odf
 echo 'emchain > ../emchain_output.txt 2>&1' >> ../summary.txt
 emchain > ../emchain_output.txt 2>&1
+
+# Check that emchain completed successfully
+# There are sometimes errors where the TCX file is nearly empty and the emchain cannot complete
+# If so the file should be rerun using the TCS timing information
+if grep -q "TooFewTimeCorrelationDataPoints" ../emchain_output.txt; then
+    echo 'TCX file is almost empty. Rerunning with the TCS file.'
+    echo 'TCX file is almost empty. Rerunning with the TCS file.' >> ../summary.txt
+    export SAS_TIMECORR=TCS
+    echo 'emchain > ../emchain_output.txt 2>&1' >> ../summary.txt
+    emchain > ../emchain_output.txt 2>&1
+fi
+
+
 echo 'mos-filter > ../mos-filter_output.txt 2>&1' >> ../summary.txt
 mos-filter > ../mos-filter_output.txt 2>&1
 
@@ -458,9 +494,15 @@ for prefix in $mosprefixes; do
             mos-spectra prefix=$prefix caldb=$CALDB mask=1 elow=0 ehigh=0 ccd1=$ccd1 ccd2=$ccd2 ccd3=$ccd3 ccd4=$ccd4 ccd5=$ccd5 ccd6=$ccd6 ccd7=$ccd7 > ../mos$prefix-spectra_output.txt 2>&1
         fi
 
-        # Create the Quiescent Particle Background (QPB) file
-        echo 'mos_back prefix='$prefix' caldb=$CALDB diag=0 elow=0 ehigh=0 ccd1='$ccd1' ccd2='$ccd2' ccd3='$ccd3' ccd4='$ccd4' ccd5='$ccd5' ccd6='$ccd6' ccd7='$ccd7' > ../mos'$prefix'_back_output.txt 2>&1' >> ../summary.txt
-        mos_back prefix=$prefix caldb=$CALDB diag=0 elow=0 ehigh=0 ccd1=$ccd1 ccd2=$ccd2 ccd3=$ccd3 ccd4=$ccd4 ccd5=$ccd5 ccd6=$ccd6 ccd7=$ccd7 > ../mos${prefix}_back_output.txt 2>&1
+        # Check if there are insufficient events to estimate the background
+        if grep -q 'Illegal division by zero' '../mos'$prefix'-spectra_output.txt'; then
+            echo 'There was insufficient corner data to estimate the QPB background for mos'$prefix
+            echo 'There was insufficient corner data to estimate the QPB background for mos'$prefix >> ../summary.txt
+        else 
+            # Create the Quiescent Particle Background (QPB) file
+            echo 'mos_back prefix='$prefix' caldb=$CALDB diag=0 elow=0 ehigh=0 ccd1='$ccd1' ccd2='$ccd2' ccd3='$ccd3' ccd4='$ccd4' ccd5='$ccd5' ccd6='$ccd6' ccd7='$ccd7' > ../mos'$prefix'_back_output.txt 2>&1' >> ../summary.txt
+            mos_back prefix=$prefix caldb=$CALDB diag=0 elow=0 ehigh=0 ccd1=$ccd1 ccd2=$ccd2 ccd3=$ccd3 ccd4=$ccd4 ccd5=$ccd5 ccd6=$ccd6 ccd7=$ccd7 > ../mos${prefix}_back_output.txt 2>&1
+        fi
 
         echo 'Finished mos'$prefix >> ../summary.txt
     else
@@ -501,9 +543,15 @@ for prefix in $pnprefixes; do
         pn-spectra prefix=$prefix caldb=$CALDB mask=1 elow=0 ehigh=0 quad1=$quad1 quad2=$quad2 quad3=$quad3 quad4=$quad4 > ../pn$prefix-spectra_output.txt 2>&1
     fi
 
-    # Create the Quiescent Particle Background (QPB) file
-    echo 'pn_back prefix='$prefix' caldb=$CALDB diag=0 elow=0 ehigh=0 quad1='$quad1' quad2='$quad2' quad3='$quad3' quad4='$quad4' > ../pn'$prefix'_back_output.txt 2>&1' >> ../summary.txt
-    pn_back prefix=$prefix caldb=$CALDB diag=0 elow=0 ehigh=0 quad1=$quad1 quad2=$quad2 quad3=$quad3 quad4=$quad4 > ../pn${prefix}_back_output.txt 2>&1
+    # Check if there are insufficient events to estimate the background
+    if grep -q 'Illegal division by zero' '../pn'$prefix'-spectra_output.txt'; then
+        echo 'There was insufficient corner data to estimate the QPB background for pn'$prefix
+        echo 'There was insufficient corner data to estimate the QPB background for pn'$prefix >> ../summary.txt
+    else
+        # Create the Quiescent Particle Background (QPB) file
+        echo 'pn_back prefix='$prefix' caldb=$CALDB diag=0 elow=0 ehigh=0 quad1='$quad1' quad2='$quad2' quad3='$quad3' quad4='$quad4' > ../pn'$prefix'_back_output.txt 2>&1' >> ../summary.txt
+        pn_back prefix=$prefix caldb=$CALDB diag=0 elow=0 ehigh=0 quad1=$quad1 quad2=$quad2 quad3=$quad3 quad4=$quad4 > ../pn${prefix}_back_output.txt 2>&1
+    fi
 
     echo 'Finished pn'$prefix >> ../summary.txt
 done
@@ -580,15 +628,13 @@ rm -rf odf/
 rm -rf pps/
 rm -rf analysis/
 
-# chmod all files
-chmod -R 777 $xmmdata/$obsID
-
 # Check if python output successfully written, otherwise failed
 if ls ./*_processed.h5 1> /dev/null 2>&1; then
     echo 'At least one hdf5 output created' >> ./summary.txt
 else
     echo 'No python output created' >> ./summary.txt
     echo 'Processing failed!' >> ./summary.txt
+    echo 'No python output created'
     echo 'Processing failed!'
     exit 1
 fi

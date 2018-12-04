@@ -10,6 +10,7 @@
 from bs4 import BeautifulSoup
 import pandas as pd
 import glob
+import sys
 
 # Parse keyword arguments
 import argparse
@@ -35,7 +36,10 @@ with open(ppssum_loc) as f:
 exp_table = BS.find('div', {'id':'widetable'}).find('table')
 
 # Store each table header as a Pandas DataFrame
-exp_df = pd.read_html(str(exp_table),header=0,index_col=0)[0]
+try:
+    exp_df = pd.read_html(str(exp_table),header=0,index_col=0)[0]
+except ValueError:
+    sys.exit('There were no exposures recorded by the EPIC camera.')
 
 # Iterate through each row = science exposure
 for row in exp_df.itertuples():
