@@ -20,14 +20,21 @@ That analysis performed a search for the 3.5 keV line resulting from dark matter
 
 A central aspect of the analysis performed in [1812.0xxxxx](https://arxiv.org/abs/1812.0xxxx) was processing a large number of XMM-Newton datasets. In `ProcessXMM` we provide the code written for this purpose.
 
-The code is a combination of bash and Python. The code requires installation of both the [XMM-SAS](https://xmm-tools.cosmos.esa.int/external/xmm_user_support/documentation/sas_usg/USG/) and [HEADAS](https://heasarc.nasa.gov/lheasoft/) softwares. In addition the python modules numpy, astropy, h5py, bs4, and pandas are required.
+The code is a combination of bash and Python. The code requires installation of both the [XMM-SAS](https://xmm-tools.cosmos.esa.int/external/xmm_user_support/documentation/sas_usg/USG/) and [HEADAS](https://heasarc.nasa.gov/lheasoft/) softwares. In addition the python modules [numpy](http://www.numpy.org/), [astropy](http://www.astropy.org/), [h5py](https://www.h5py.org/), [beautifulsoup4](https://pypi.org/project/beautifulsoup4/), and [pandas](https://pandas.pydata.org/) are required.
 
-To use the software, first establish the directories where the XMM tools are installed and the output data should be written in `set_dirs.sh`. Then to process all exposures associated with an observation with ID `obsID`, use
+To use the code, first establish the directories where the XMM tools are installed and the output data should be written in `set_dirs.sh`. Then to process all exposures associated with an observation with ID `obsID`, use
 
-```./dl2dat.sh obsID
+```
+./dl2dat.sh $obsID
 ```
 
-The code will then process the observation if possible. The output data in h5py format, along with a summary of the processing will be stored in `xmmdata/obsID`, where `xmmdata` is set in `set_dirs.sh`.
+The code will then process the observation if possible, and explain why if not. The output data in h5py format, along with a summary of the processing will be stored in `xmmdata/obsID`, where `xmmdata` is defined in `set_dirs.sh`.
+
+Two words of caution regarding the code:
+
+- More recent versions of the XMM-SAS package are shipped with their own python installation, that is loaded along with the tools. This will replace your default python environment and does not contain some of the packages required to run this processing code. This problem can be avoided by commenting out the lines loading python within the `setsas.sh`, `setsas.csh`, `sas-setup.sh`, and `sas-setup.csh` files within the SAS directory.
+- The processing code can be run in parallel across a number of observations. Nevertheless, one obstacle to running a large number in parallel is that the XMM-SAS tools write and edit several common files that are independent of the observation ID, which will lead to a crash if two observations reach this point simultaneously. We have found making a unique copy of the XMM-SAS tools for each observation ID significantly increases the number of IDs that can be processed in parallel.
+
 
 ## Supplementary Data for [1812.0xxxxx](https://arxiv.org/abs/1812.0xxxx)
 
