@@ -20,6 +20,14 @@ That analysis performed a search for the 3.5 keV line resulting from dark matter
 
 A central aspect of the analysis performed in [1812.0xxxxx](https://arxiv.org/abs/1812.0xxxx) was processing a large number of XMM-Newton datasets. In `ProcessXMM` we provide the code written for this purpose.
 
+The code is a combination of bash and Python. The code requires installation of both the [XMM-SAS](https://xmm-tools.cosmos.esa.int/external/xmm_user_support/documentation/sas_usg/USG/) and [HEADAS](https://heasarc.nasa.gov/lheasoft/) softwares. In addition the python modules numpy, astropy, h5py, bs4, and pandas are required.
+
+To use the software, first establish the directories where the XMM tools are installed and the output data should be written in `set_dirs.sh`. Then to process all exposures associated with an observation with ID `obsID`, use
+
+```./dl2dat.sh obsID
+```
+
+The code will then process the observation if possible. The output data in h5py format, along with a summary of the processing will be stored in `xmmdata/obsID`, where `xmmdata` is set in `set_dirs.sh`.
 
 ## Supplementary Data for [1812.0xxxxx](https://arxiv.org/abs/1812.0xxxx)
 
