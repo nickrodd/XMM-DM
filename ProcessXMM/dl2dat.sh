@@ -11,10 +11,6 @@
 #
 ###############################################################################
 
-# TODO: I think a number of the special cases can now be removed, should review
-# TODO: Add check for if clean.fits is missing don't process - this only occurred for
-# two of the unscheduled 0165570101 mos exposures
-
 
 # Import directories which must be set before running
 source set_dirs.sh
@@ -221,29 +217,23 @@ export SAS_ODF=$(readlink -f *SUM.SAS)
 
 echo -e '\nStep 4: Determine the detector prefixes' >> ../summary.txt
 
-# For ID 0690580101 the pps folder is missing, add details manually
-if [ $obsID == 0690580101 ]; then
-    echo -e '1U002\n2U002' > ../mos_exposures.txt
-    echo 'U006' > ../pn_exposures.txt
-else
-    # Create files mos_exposures.txt and pn_exposures.txt
-    # that contain the science exposures for the observation
-    python $cwd/get_science_exposures.py --xmmdata $xmmdata --obsID $obsID
+# Create files mos_exposures.txt and pn_exposures.txt
+# that contain the science exposures for the observation
+python $cdir/get_science_exposures.py --xmmdata $xmmdata --obsID $obsID
 
-    # Check if exposure files created or if python was unsuccessful
-    if ls ../*_exposures.txt 1> /dev/null 2>&1; then
-        echo 'Successfully created science exposures' >> ../summary.txt
-    else
-        cd ..
-        rm -rf odf/
-        rm -rf pps/
-        rm -rf analysis/ 
-        echo 'There are no science exposures for this observation.' >> ./summary.txt
-        echo 'Processing failed!' >> ./summary.txt
-        echo 'There are no science exposures for this observation.'
-        echo 'Processing failed!'
-        exit 1
-    fi
+# Check if exposure files created or if python was unsuccessful
+if ls ../*_exposures.txt 1> /dev/null 2>&1; then
+    echo 'Successfully created science exposures' >> ../summary.txt
+else
+    cd ..
+    rm -rf odf/
+    rm -rf pps/
+    rm -rf analysis/ 
+    echo 'There are no science exposures for this observation.' >> ./summary.txt
+    echo 'Processing failed!' >> ./summary.txt
+    echo 'There are no science exposures for this observation.'
+    echo 'Processing failed!'
+    exit 1
 fi
 
 # Get array of the mos prefixes
@@ -255,15 +245,12 @@ fi
 # Get array of the pn prefixes and count number of exposures
 if [ ! -f ../pn_exposures.txt ]; then
     pnprefixes=''
-    n_pnexp=0
 else
     pnprefixes=$(<../pn_exposures.txt)
-    n_pnexp=$(wc -l ../pn_exposures.txt | awk '{ print $1 }')
 fi
 
 echo 'MOS prefixes: '$mosprefixes >> ../summary.txt
 echo 'PN prefixes: '$pnprefixes >> ../summary.txt
-echo 'Number of PN exposures: '$n_pnexp >> ../summary.txt
 
 
 ######################
@@ -283,35 +270,28 @@ echo '...for the PN camera' >> ../summary.txt
 # NB: epchain needs to be run once for each pn exposure
 # Files created in odf/ of the form P{$obsID}PN{$PREFIX}
 
-# For ID 0690580101 pn exposure was corrupted, so manually account for this
-if [ $obsID == 0690580101 ]; then
-    echo 'epchain withoutoftime=true exposure=2 > ../epchainoot_output.txt 2>&1' >> ../summary.txt
-    epchain withoutoftime=true exposure=2 > ../epchainoot_output.txt 2>&1
-    echo 'epchain exposure=2 > ../epchain_output.txt 2>&1' >> ../summary.txt
-    epchain exposure=2 > ../epchain_output.txt 2>&1
-else
-    for pref in $pnprefixes; do
-        schedule=${pref:0:1}
-        exposure=${pref:1:3}
+for pref in $pnprefixes; do
+    schedule=${pref:0:1}
+    exposure=${pref:1:3}
+    echo 'epchain withoutoftime=true odfaccess=odf exposure='$exposure' schedule='$schedule' > ../epchain'$pref'oot_output.txt 2>&1' >> ../summary.txt
+    epchain withoutoftime=true odfaccess=odf exposure=$exposure schedule=$schedule > ../epchain${pref}oot_output.txt 2>&1
+    echo 'epchain odfaccess=odf exposure='$exposure' schedule='$schedule' > ../epchain'$pref'_output.txt 2>&1' >> ../summary.txt
+    epchain odfaccess=odf exposure=$exposure schedule=$schedule > ../epchain${pref}_output.txt 2>&1
+    
+    # Check that epchain completed successfully
+    # There are sometimes errors where the TCX file is nearly empty and the epchain cannot complete
+    # If so the file should be rerun using the TCS timing information
+    if ( grep -q "TooFewTimeCorrelationDataPoints" ../epchain${pref}oot_output.txt ) || ( grep -q "TooFewTimeCorrelationDataPoints" ../epchain${pref}_output.txt ); then
+        echo 'TCX file is almost empty. Rerunning with the TCS file.'
+        echo 'TCX file is almost empty. Rerunning with the TCS file.' >> ../summary.txt
+        export SAS_TIMECORR=TCS
         echo 'epchain withoutoftime=true odfaccess=odf exposure='$exposure' schedule='$schedule' > ../epchain'$pref'oot_output.txt 2>&1' >> ../summary.txt
         epchain withoutoftime=true odfaccess=odf exposure=$exposure schedule=$schedule > ../epchain${pref}oot_output.txt 2>&1
         echo 'epchain odfaccess=odf exposure='$exposure' schedule='$schedule' > ../epchain'$pref'_output.txt 2>&1' >> ../summary.txt
         epchain odfaccess=odf exposure=$exposure schedule=$schedule > ../epchain${pref}_output.txt 2>&1
-        
-        # Check that epchain completed successfully
-        # There are sometimes errors where the TCX file is nearly empty and the epchain cannot complete
-        # If so the file should be rerun using the TCS timing information
-        if ( grep -q "TooFewTimeCorrelationDataPoints" ../epchain${pref}oot_output.txt ) || ( grep -q "TooFewTimeCorrelationDataPoints" ../epchain${pref}_output.txt ); then
-            echo 'TCX file is almost empty. Rerunning with the TCS file.'
-            echo 'TCX file is almost empty. Rerunning with the TCS file.' >> ../summary.txt
-            export SAS_TIMECORR=TCS
-            echo 'epchain withoutoftime=true odfaccess=odf exposure='$exposure' schedule='$schedule' > ../epchain'$pref'oot_output.txt 2>&1' >> ../summary.txt
-            epchain withoutoftime=true odfaccess=odf exposure=$exposure schedule=$schedule > ../epchain${pref}oot_output.txt 2>&1
-            echo 'epchain odfaccess=odf exposure='$exposure' schedule='$schedule' > ../epchain'$pref'_output.txt 2>&1' >> ../summary.txt
-            epchain odfaccess=odf exposure=$exposure schedule=$schedule > ../epchain${pref}_output.txt 2>&1
-        fi
-    done
-fi
+    fi
+done
+
 
 # Run epspatialcti on all of the PN event lists
 # This corrects the event list for the spatial variation in
@@ -332,6 +312,20 @@ done
 # *-clean.fits – The filtered photon event files
 echo 'pn-filter > ../pn-filter_output.txt 2>&1' >> ../summary.txt
 pn-filter > ../pn-filter_output.txt 2>&1
+
+# Confirm the output was created successfully, if not remove this exposure
+# The filter step will fail if the exposure is empty, as happened for the 1U002
+# and 2U002 MOS exposures of observation 0165570101
+pnexpclean=''
+for pref in $pnprefixes; do
+    if [ ! -f 'pn'$pref'-clean.fits' ]; then
+        echo 'pn'$pref'-clean.fits was not created successfully.' >> ../summary.txt
+    else
+        pnexpclean=$pnexpclean' '$pref
+    fi
+done
+pnprefixes=$pnexpclean
+
 
 # Secondly process the MOS camera events
 echo '...for the MOS camera' >> ../summary.txt
@@ -356,6 +350,18 @@ fi
 
 echo 'mos-filter > ../mos-filter_output.txt 2>&1' >> ../summary.txt
 mos-filter > ../mos-filter_output.txt 2>&1
+
+# Check if the processing was successful
+mosexpclean=''
+for pref in $mosprefixes; do
+    if [ ! -f 'mos'$pref'-clean.fits' ]; then
+        echo 'mos'$pref'-clean.fits was not created successfully.' >> ../summary.txt
+    else
+        mosexpclean=$mosexpclean' '$pref
+    fi
+done
+mosprefixes=$mosexpclean
+
 
 #######################
 # 6. Anomalous states #
@@ -590,8 +596,8 @@ for prefix in $mosprefixes; do
         continue
     fi 
     
-    echo 'python '$cwd'/spc2dat.py --xmmdata '$xmmdata' --obsID '$obsID' --prefix '$pref >> ../summary.txt 
-    python $cwd/spc2dat.py --xmmdata $xmmdata --obsID $obsID --prefix $pref
+    echo 'python '$cdir'/spc2dat.py --xmmdata '$xmmdata' --obsID '$obsID' --prefix '$pref >> ../summary.txt 
+    python $cdir/spc2dat.py --xmmdata $xmmdata --obsID $obsID --prefix $pref
 done
 
 for prefix in $pnprefixes; do
@@ -618,8 +624,8 @@ for prefix in $pnprefixes; do
         continue
     fi
 
-    echo 'python '$cwd'/spc2dat.py --xmmdata '$xmmdata' --obsID '$obsID' --prefix '$pref >> ../summary.txt
-    python $cwd/spc2dat.py --xmmdata $xmmdata --obsID $obsID --prefix $pref
+    echo 'python '$cdir'/spc2dat.py --xmmdata '$xmmdata' --obsID '$obsID' --prefix '$pref >> ../summary.txt
+    python $cdir/spc2dat.py --xmmdata $xmmdata --obsID $obsID --prefix $pref
 done
 
 # Delete the data that is no longer required
