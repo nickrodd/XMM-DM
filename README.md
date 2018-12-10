@@ -32,7 +32,7 @@ The code will then process the observation if possible, and explain why if not. 
 
 Two words of caution regarding the code:
 
-- More recent versions of the XMM-SAS package are shipped with their own python installation, that is loaded along with the tools. This will replace your default python environment and does not contain some of the packages required to run this processing code. This problem can be avoided by commenting out the lines loading python within the `setsas.sh`, `setsas.csh`, `sas-setup.sh`, and `sas-setup.csh` files within the SAS directory.
+- More recent versions of the XMM-SAS package are shipped with their own python installation, that is loaded along with the tools. This will replace your default python environment and does not contain some of the packages required to run the processing code. This problem can be avoided by commenting out the lines loading python within the `setsas.sh`, `setsas.csh`, `sas-setup.sh`, and `sas-setup.csh` files located in the SAS directory.
 - The processing code can be run in parallel across a number of observations. Nevertheless, one obstacle to running a large number in parallel is that the XMM-SAS tools write and edit several common files that are independent of the observation ID, which will lead to a crash if two observations reach this point simultaneously. We have found making a unique copy of the XMM-SAS tools for each observation ID significantly increases the number of IDs that can be processed in parallel.
 
 
@@ -43,7 +43,8 @@ In `SuppData/Fiducial_Exposures.csv` we provide the full list of 1,397 exposures
 1. `Observation ID`: the 10 digit identifier for this observation.
 2. `Camera`: the camera this exposure was collected with, MOS1, MOS2, or PN.
 3. `Exposure Identifier`: the unique identifier for this exposure given the camera and observation ID.
-4. `Exposure Time (ks)`: the length of this exposure [ks].
-5. `Galactic l (degrees)`: the location of this exposure in galactic longitude [deg].
-6. `Galactic b (degree)`: the location of this exposure in galactic latitude [deg].
-7. `Target Type`: the intended target of the observation.
+4. `Exposure Time`: the length of this exposure [ks].
+5. `Galactic l`: the location of this exposure in galactic longitude [deg].
+6. `Galactic b`: the location of this exposure in galactic latitude [deg].
+7. `Target`: name of the intended observation target. 
+8. `Target Type`: the intended type of the target.
