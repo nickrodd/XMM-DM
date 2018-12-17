@@ -44,7 +44,7 @@ In `SuppData/Fiducial_Exposures.csv` we provide the full list of 1,397 exposures
 2. `Camera`: the camera this exposure was collected with, MOS1, MOS2, or PN.
 3. `Exposure Identifier`: the unique identifier for this exposure given the camera and observation ID.
 4. `Exposure Time`: the length of this exposure [ks].
-5. `Galactic l`: the location of this exposure in galactic longitude [deg].
-6. `Galactic b`: the location of this exposure in galactic latitude [deg].
+5. `l`: the location of this exposure in galactic longitude [deg].
+6. `b`: the location of this exposure in galactic latitude [deg].
 7. `Target`: name of the intended observation target. 
 8. `Target Type`: the intended type of the target.
